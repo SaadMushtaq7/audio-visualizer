@@ -10,11 +10,11 @@ const AudioPlayer = ({ isPlaying, setIsPlaying, audioRef }) => {
   const analyser = useRef();
   const bufferLength = useRef();
   const frequencyArray = useRef([]);
-  const barWidth = useRef();
-  const x = useRef();
   const rafId = useRef();
-  const WIDTH = useRef();
-  const HEIGHT = useRef();
+
+  const canvasPrimaryColor = "#838383";
+  const canvasSecondaryColor = "#4d4d4d";
+  const stroke = "#4d4d4d";
 
   const playPauseToggle = () => {
     if (isPlaying) {
@@ -24,86 +24,64 @@ const AudioPlayer = ({ isPlaying, setIsPlaying, audioRef }) => {
     } else {
       audioRef.current.play();
       setIsPlaying(!isPlaying);
+      requestAnimationFrame(animate);
     }
   };
 
   const animate = useCallback(() => {
-    //Circular bars
-    /*
-        x.current = 0;
-    context.current.clearRect(
-      0,
-      0,
-      canvasRef.current.width,
-      canvasRef.current.height
-    );
-    analyser.current.getByteFrequencyData(frequencyArray.current);
-
-    for (let i = 0; i < bufferLength.current; i++) {
-      barHeight.current = frequencyArray.current[i] / 3;
-      context.current.save();
-      context.current.translate(
-        canvasRef.current.width / 2,
-        canvasRef.current.height / 2
-      );
-      context.current.rotate(i + (Math.PI * 2) / bufferLength.current);
-      context.current.fillStyle = "white";
-      context.current.fillRect(0, 0, barWidth.current, 15);
-
-      context.current.fillStyle = "#1976d2";
-      context.current.fillRect(0, 0, barWidth.current, barHeight.current);
-      x.current += barWidth.current;
-      context.current.restore();
-    }
-    */
-    analyser.current.smoothingTimeConstant = 0.5;
-    WIDTH.current = canvasRef.current.width = window.innerWidth;
-    HEIGHT.current = canvasRef.current.height = window.innerHeight;
-    barWidth.current = (WIDTH.current * 1.0) / bufferLength.current;
-
-    x.current = 0;
-    context.current.fillStyle = "#000";
-    context.current.fillRect(0, 0, WIDTH.current, HEIGHT.current);
-    context.current.lineWidth = 1;
-    context.current.strokeStyle = "#fff";
-    context.current.beginPath();
-    context.current.stroke();
-    context.current.closePath();
-
-    analyser.current.getByteFrequencyData(frequencyArray.current);
-
-    analyser.current.getByteTimeDomainData(frequencyArray.current);
-    context.current.lineWidth = 1;
-    context.current.strokeStyle = "#fff";
-    context.current.beginPath();
-    x.current = 0;
-    for (let i = 0; i < bufferLength.current; i++) {
-      context.current.save();
-      context.current.translate(
-        canvasRef.current.width / 2,
-        canvasRef.current.height / 2
-      );
-      context.current.rotate(i + (Math.PI * 128) / bufferLength.current);
-
-      const v = frequencyArray.current[i] / 128.0;
-      const y = (v * HEIGHT.current) / 2;
-
-      if (i === 0) {
-        context.current.moveTo(x.current, y);
-      } else {
-        context.current.lineTo(x.current, y);
-      }
-
-      x.current = i * barWidth.current;
-      context.current.restore();
-    }
-    context.current.lineTo(
-      WIDTH.current,
-      (frequencyArray.current[0] / 128.0) * HEIGHT.current
-    );
-    context.current.stroke();
     rafId.current = requestAnimationFrame(animate);
+
+    const CENTERX = canvasRef.current.width / 2;
+    const CENTERY = canvasRef.current.height / 2;
+
+    const WIDTH = 250;
+    const HEIGHT = 250;
+
+    analyser.current.getByteFrequencyData(frequencyArray.current);
+    context.current.clearRect(0, 0, WIDTH, HEIGHT);
+
+    let gradient = context.current.createLinearGradient(
+      0,
+      110,
+      90,
+      30,
+      100,
+      100,
+      70
+    );
+    gradient.addColorStop(0.1, canvasPrimaryColor);
+    gradient.addColorStop(0.4, canvasSecondaryColor);
+    gradient.addColorStop(0.7, canvasSecondaryColor);
+    gradient.addColorStop(0.9, canvasPrimaryColor);
+    gradient.addColorStop(1, canvasPrimaryColor);
+
+    for (let i = 0; i < bufferLength.current; i++) {
+      let radius = frequencyArray.current[i] / 2;
+      if (radius < 20) radius = 20;
+      if (radius > 100) radius = 100;
+      context.current.beginPath();
+      context.current.arc(CENTERX, CENTERY, radius, 0, 2 * Math.PI, false);
+      context.current.fillStyle = gradient;
+      context.current.fill();
+      context.current.lineWidth = 10;
+      context.current.strokeStyle = stroke;
+      context.current.stroke();
+    }
   }, []);
+
+  const drawCircle = useCallback(() => {
+    const canvasCtx = context.current;
+
+    const WIDTH = 250;
+    const HEIGHT = 250;
+
+    analyser.current.fftSize = 32;
+    bufferLength.current = analyser.current.frequencyBinCount;
+    frequencyArray.current = new Uint8Array(bufferLength.current);
+    canvasCtx.clearRect(0, 0, WIDTH, HEIGHT);
+
+    animate();
+  }, [animate]);
 
   useEffect(() => {
     if (audioRef.current && isPlaying) {
@@ -114,18 +92,13 @@ const AudioPlayer = ({ isPlaying, setIsPlaying, audioRef }) => {
           audioRef.current
         );
         analyser.current = audioContext.current.createAnalyser();
-        const listen = audioContext.current.createGain();
-        source.current.connect(listen);
-        listen.connect(analyser.current);
+        source.current.connect(analyser.current);
         analyser.current.connect(audioContext.current.destination);
-        analyser.current.fftSize = 2048;
+        bufferLength.current = analyser.current.frequencyBinCount;
+        drawCircle();
       }
-      bufferLength.current = analyser.current.frequencyBinCount;
-      frequencyArray.current = new Uint8Array(bufferLength.current);
-      barWidth.current = canvasRef.current.width / bufferLength.current;
-      animate();
     }
-  }, [audioRef, isPlaying, animate]);
+  }, [audioRef, isPlaying, drawCircle]);
 
   return (
     <div id="container">
@@ -140,7 +113,7 @@ const AudioPlayer = ({ isPlaying, setIsPlaying, audioRef }) => {
           onClick={playPauseToggle}
         />
       )}
-      <canvas ref={canvasRef} id="canvas1" />
+      <canvas ref={canvasRef} height="250px" id="canvas1" />
     </div>
   );
 };
